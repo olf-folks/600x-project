@@ -1,0 +1,29 @@
+# Generated build output
+build/
+output/
+host/
+staging/
+target/
+modules-staging/
+
+# Images / archives
+*.iso
+*.tar
+*.tar.gz
+*.tar.xz
+*.cpio
+*.qcow2
+
+# Kernel build artifacts
+bzImage
+*.o
+*.ko
+*.cmd
+.tmp_versions/
+Module.symvers
+modules.order
+
+# Temporary/editor files
+*~
+*.swp
+*.tmp
