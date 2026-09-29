@@ -1,0 +1,21 @@
+--- fs/iso9660/iso9660.mk.bak	2026-09-15 05:57:52.745339623 +0000
++++ fs/iso9660/iso9660.mk	2026-09-15 16:34:28.916556679 +0000
+@@ -194,4 +194,18 @@
+ ROOTFS_ISO9660_POST_GEN_HOOKS += ROOTFS_ISO9660_GEN_HYBRID
+ endif
+ 
++# ThinkPad 600X installer payload
++define ROOTFS_ISO9660_COPY_600X_PAYLOAD
++	mkdir -p $(ROOTFS_ISO9660_TMP_TARGET_DIR)/payload
++	cp /home/superuser/buildroot-2026.08/output/images/rootfs.tar \
++		$(ROOTFS_ISO9660_TMP_TARGET_DIR)/payload/rootfs-v7.tar
++endef
++
++define ROOTFS_ISO9660_REMOVE_600X_PAYLOAD
++	rm -rf $(ROOTFS_ISO9660_TMP_TARGET_DIR)/payload
++endef
++
++ROOTFS_ISO9660_PRE_GEN_HOOKS += ROOTFS_ISO9660_COPY_600X_PAYLOAD
++ROOTFS_ISO9660_POST_GEN_HOOKS += ROOTFS_ISO9660_REMOVE_600X_PAYLOAD
++
+ $(eval $(rootfs))
