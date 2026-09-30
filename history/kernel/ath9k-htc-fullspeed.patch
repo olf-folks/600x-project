@@ -1,0 +1,125 @@
+--- a/drivers/net/wireless/ath/ath9k/hif_usb.h
++++ b/drivers/net/wireless/ath/ath9k/hif_usb.h
+@@ -134,6 +134,7 @@
+ 	int rx_pad_len;
+ 	spinlock_t rx_lock;
+ 	u8 flags; /* HIF_USB_* */
++	bool regout_bulk;
+ };
+ 
+ int ath9k_hif_usb_init(void);
+--- a/drivers/net/wireless/ath/ath9k/hif_usb.c
++++ b/drivers/net/wireless/ath/ath9k/hif_usb.c
+@@ -118,10 +118,17 @@
+ 	cmd->skb = skb;
+ 	cmd->hif_dev = hif_dev;
+ 
+-	usb_fill_int_urb(urb, hif_dev->udev,
+-			 usb_sndintpipe(hif_dev->udev, USB_REG_OUT_PIPE),
+-			 skb->data, skb->len,
+-			 hif_usb_regout_cb, cmd, 1);
++	if (hif_dev->regout_bulk)
++        usb_fill_bulk_urb(urb, hif_dev->udev,
++                          usb_sndbulkpipe(hif_dev->udev, USB_REG_OUT_PIPE),
++                          skb->data, skb->len,
++                          hif_usb_regout_cb, cmd);
++	else
++        usb_fill_int_urb(urb, hif_dev->udev,
++                         usb_sndintpipe(hif_dev->udev, USB_REG_OUT_PIPE),
++                         skb->data, skb->len,
++                         hif_usb_regout_cb, cmd, 1);
++
+ 
+ 	usb_anchor_urb(urb, &hif_dev->regout_submitted);
+ 	ret = usb_submit_urb(urb, GFP_KERNEL);
+@@ -1364,16 +1371,49 @@
+ 	int ret = 0;
+ 
+ 	/* Verify the expected endpoints are present */
+-	alt = interface->cur_altsetting;
+-	if (usb_find_common_endpoints(alt, &bulk_in, &bulk_out, &int_in, &int_out) < 0 ||
+-	    usb_endpoint_num(bulk_in) != USB_WLAN_RX_PIPE ||
+-	    usb_endpoint_num(bulk_out) != USB_WLAN_TX_PIPE ||
+-	    usb_endpoint_num(int_in) != USB_REG_IN_PIPE ||
+-	    usb_endpoint_num(int_out) != USB_REG_OUT_PIPE) {
+-		dev_err(&udev->dev,
+-			"ath9k_htc: Device endpoint numbers are not the expected ones\n");
+-		return -ENODEV;
+-	}
++/* Verify the expected endpoints are present */
++alt = interface->cur_altsetting;
++
++if (udev->speed == USB_SPEED_FULL) {
++        int i;
++        struct usb_endpoint_descriptor *ep;
++
++        bulk_in = bulk_out = int_in = int_out = NULL;
++
++        for (i = 0; i < alt->desc.bNumEndpoints; i++) {
++                ep = &alt->endpoint[i].desc;
++
++                if (usb_endpoint_num(ep) == USB_WLAN_RX_PIPE &&
++                    usb_endpoint_is_bulk_in(ep))
++                        bulk_in = ep;
++                else if (usb_endpoint_num(ep) == USB_WLAN_TX_PIPE &&
++                         usb_endpoint_is_bulk_out(ep))
++                        bulk_out = ep;
++                else if (usb_endpoint_num(ep) == USB_REG_IN_PIPE &&
++                         usb_endpoint_is_int_in(ep))
++                        int_in = ep;
++                else if (usb_endpoint_num(ep) == USB_REG_OUT_PIPE &&
++                         usb_endpoint_is_bulk_out(ep))
++                        int_out = ep;
++        }
++
++        if (!bulk_in || !bulk_out || !int_in || !int_out) {
++                dev_err(&udev->dev,
++                        "ath9k_htc: Full-speed endpoint layout not supported\n");
++                return -ENODEV;
++        }
++} else {
++        if (usb_find_common_endpoints(alt, &bulk_in, &bulk_out,
++                                      &int_in, &int_out) < 0 ||
++            usb_endpoint_num(bulk_in) != USB_WLAN_RX_PIPE ||
++            usb_endpoint_num(bulk_out) != USB_WLAN_TX_PIPE ||
++            usb_endpoint_num(int_in) != USB_REG_IN_PIPE ||
++            usb_endpoint_num(int_out) != USB_REG_OUT_PIPE) {
++                dev_err(&udev->dev,
++                        "ath9k_htc: Device endpoint numbers are not the expected ones\n");
++                return -ENODEV;
++        }
++}
+ 
+ 	if (id->driver_info == STORAGE_DEVICE)
+ 		return send_eject_command(interface);
+@@ -1389,6 +1429,7 @@
+ 	hif_dev->udev = udev;
+ 	hif_dev->interface = interface;
+ 	hif_dev->usb_device_id = id;
++	hif_dev->regout_bulk = (udev->speed == USB_SPEED_FULL);
+ #ifdef CONFIG_PM
+ 	udev->reset_resume = 1;
+ #endif
+@@ -1415,13 +1456,18 @@
+ 	u32 reboot_cmd = 0xffffffff;
+ 	void *buf;
+ 	int ret;
+-
++	int actual_len;
+ 	buf = kmemdup(&reboot_cmd, 4, GFP_KERNEL);
+ 	if (!buf)
+ 		return;
+-
+-	ret = usb_interrupt_msg(udev, usb_sndintpipe(udev, USB_REG_OUT_PIPE),
+-			   buf, 4, NULL, USB_MSG_TIMEOUT);
++	if (udev->speed == USB_SPEED_FULL)
++        ret = usb_bulk_msg(udev,
++                           usb_sndbulkpipe(udev, USB_REG_OUT_PIPE),
++                           buf, 4, &actual_len, USB_MSG_TIMEOUT);
++	else
++        ret = usb_interrupt_msg(udev,
++                                usb_sndintpipe(udev, USB_REG_OUT_PIPE),
++                                buf, 4, NULL, USB_MSG_TIMEOUT);
+ 	if (ret)
+ 		dev_err(&udev->dev, "ath9k_htc: USB reboot failed\n");
+ 
