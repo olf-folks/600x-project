@@ -35,3 +35,27 @@ The current project eventually split into two distinct Buildroot systems:
 
 Historical files in this directory should therefore not be compared directly
 to the installer configuration without accounting for that split.
+
+### ath9k-htc-fullspeed.patch
+
+`history/kernel/ath9k-htc-fullspeed.patch` is a custom Linux kernel patch
+created during the ThinkPad 600X Wi-Fi work.
+
+The stock `ath9k_htc` driver expects the USB register/control OUT endpoint to
+be an interrupt endpoint. Some Atheros HTC USB devices operating at USB
+full-speed expose that endpoint as a bulk OUT endpoint instead.
+
+The patch teaches `ath9k_htc` to handle that full-speed endpoint layout by:
+
+- detecting USB full-speed devices
+- locating the expected endpoints manually
+- accepting a bulk OUT endpoint for register/control traffic
+- using bulk URBs for register writes on those devices
+- using a bulk transfer for the device reboot command when required
+
+High-speed devices continue to use the normal `ath9k_htc` endpoint handling.
+
+This patch was part of the effort to make Atheros USB Wi-Fi usable on the
+ThinkPad 600X and is preserved here because it represents an actual kernel
+driver modification developed for the project, not just a configuration
+change.
